@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json"
+      xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:mock="http://www.mulesoft.org/schema/mule/mock"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:spring="http://www.springframework.org/schema/beans"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/mock http://www.mulesoft.org/schema/mule/mock/current/mule-mock.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <munit:config name="munit" doc:name="MUnit configuration"/>
+    <spring:beans>
+        <spring:import resource="classpath:getcompanyprojectids.xml"/>
+        <spring:import resource="classpath:globals.xml"/>
+    </spring:beans>
+    <munit:test name="getCompanyHistoryProjectIdsHandlesTwoItems" description="Test">
+        <mock:when messageProcessor="sfdc:query" doc:name="Mock Salesforce Call">
+            <mock:then-return payload="#[ [
+            ['DatasiteOne_Project__c': 'abc123', 'LastModifiedDate': '2017-08-23T13:06:41.000Z', 'Id': 'a3jc000000064MuAAI'],
+            ['DatasiteOne_Project__c': 'abc123', 'LastModifiedDate': '2017-08-23T13:08:02.000Z', 'Id': 'a3jc000000064MzAAI']
+
+            ] ]" mimeType="application/java"/>
+        </mock:when>
+
+        <munit:set payload="#[]" mimeType="application/json" doc:name="Set Message"/>
+
+        <flow-ref name="getCompanyProjectIds" doc:name="getCompanyProjectIds"/>
+
+        <json:json-to-object-transformer returnClass="java.util.List" mimeType="application/java" doc:name="JSON to Object"/>
+
+        <munit:assert-on-equals message="payload size is invalid" expectedValue="#[2]" actualValue="#[payload.size()]" doc:name="Assert payload size"/>
+
+    </munit:test>
+
+    <munit:test name="getCompanyHistoryProjectIdsReturnsAnEmptyList" description="Test">
+        <mock:when messageProcessor="sfdc:query" doc:name="Mock Salesforce Call">
+            <mock:then-return payload="#[ [
+            ] ]" mimeType="application/java"/>
+        </mock:when>
+
+        <munit:set payload="#[]" mimeType="application/json" doc:name="Set Message"/>
+
+        <flow-ref name="getCompanyProjectIds" doc:name="getCompanyProjectIds"/>
+
+        <json:json-to-object-transformer returnClass="java.util.List" mimeType="application/java" doc:name="JSON to Object"/>
+
+        <munit:assert-on-equals message="payload size is invalid" expectedValue="#[0]" actualValue="#[payload.size()]" doc:name="Assert payload size"/>
+
+    </munit:test>
+</mule>

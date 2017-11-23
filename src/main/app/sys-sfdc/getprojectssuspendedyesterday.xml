@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:objectstore="http://www.mulesoft.org/schema/mule/objectstore" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/objectstore http://www.mulesoft.org/schema/mule/objectstore/current/mule-objectstore.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <flow name="getProjectsSuspendedYesterday" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmGetProjectsSuspendedYesterday" connector-ref="VM_IN_MEMORY" doc:name="Get Projects suspended yesterday"/>
+        <logger message="Flow=#[flow.name] Action=started " level="INFO" category="com.merrillcorp.logging" doc:name="Logger"/>
+        <flow-ref name="getProjectsSuspendedYesterday_Sub" doc:name="getProjectsSuspendedYesterday_Sub"/>
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+    <sub-flow name="getProjectsSuspendedYesterday_Sub">
+        <objectstore:contains config-ref="Project_Company_History_Object_Store" key="lastMaxSuspendedYesterday" doc:name="ObjectStore"/>
+        <choice doc:name="Choice">
+            <when expression="#[payload==true]">
+                <logger message="***Last Max Suspended Exists" level="INFO" category="com.merrillcorp.logging" doc:name="Log Last Max Suspended Yesterday Exists"/>
+                <objectstore:retrieve config-ref="Project_Company_History_Object_Store" key="lastMaxSuspendedYesterday" doc:name="ObjectStore"/>
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="${main.sfdc.query}   where    id  &gt; '#[payload]'   and Suspended_Date__c = YESTERDAY" doc:name="Salesforce"/>
+            </when>
+            <otherwise>
+                <logger message="***LastMaxSuspendedYesterday does not exist" level="INFO" category="com.merrillcorp.logging" doc:name="Log Max Suspended Yesterday Doesn't Exist"/>
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="${main.sfdc.query}  where   Suspended_Date__c = YESTERDAY" doc:name="Salesforce"/>
+            </otherwise>
+        </choice>
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+        <logger message="Flow: #[flow.name] Payload=#[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Project List Before Queue"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload ]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <logger message="***Get Projects Suspended Yesterday Size is GREATER than 0" level="INFO" doc:name="Log Payload Size() &gt; 0"/>
+                <set-variable variableName="resultPayload" value="#[payload]" doc:name="Persist Payload"/>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-variable variableName="lastMaxSuspendedYesterday"><![CDATA[%dw 1.0
+%output application/java
+---
+(payload orderBy $.Id)[-1..0][0]]]></dw:set-variable>
+                </dw:transform-message>
+                <objectstore:store config-ref="Project_Company_History_Object_Store" key="lastMaxSuspendedYesterday" value-ref="#[flowVars.lastMaxSuspendedYesterday.Id]" doc:name="ObjectStore"/>
+                <set-payload value="#[flowVars.resultPayload]" doc:name="Set Payload Back to resultPayload"/>
+                <logger message="***Get Projects Suspended Yesterday Response before final Transformation: #[message.payloadAs(java.lang.String)]" level="INFO" doc:name="Logger"/>
+            </when>
+            <otherwise>
+                <logger message="***Get Projects Suspended Yesterday returned no results" level="INFO" doc:name="Log Empty Result"/>
+            </otherwise>
+        </choice>
+    </sub-flow>
+</mule>

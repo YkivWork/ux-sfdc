@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:objectstore="http://www.mulesoft.org/schema/mule/objectstore"
+      xmlns:json="http://www.mulesoft.org/schema/mule/json"
+      xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc"
+      xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+      xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+      xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:spring="http://www.springframework.org/schema/beans"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/objectstore http://www.mulesoft.org/schema/mule/objectstore/current/mule-objectstore.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+
+    <flow name="getProjectHistoryProjectIds" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="VM_GET_PROJECT_HISTORY_IDS" connector-ref="VM_IN_MEMORY" doc:name="VM_GET_PROJECT_HISTORY_IDS"/>
+        <objectstore:retrieve config-ref="Project_Company_History_Object_Store" defaultValue-ref="#[string:YESTERDAY]" key="lastModifiedForProjectHistory" doc:name="ObjectStore"/>
+
+        <logger message="Polling DSOProjectHistory For: #[message.payloadAs(java.lang.String)]" level="INFO" category="com.merrillcorp.logging.polling" doc:name="Logger"/>
+        <sfdc:query config-ref="Salesforce__Basic_Authentication" query="SELECT DatasiteOne_Project__c, CreatedDate FROM DatasiteOne_Project_History__c  
+WHERE CreatedDate &gt; #[payload] AND Aria__c = 'Yes'" doc:name="Salesforce"/> 
+
+        <dw:transform-message doc:name="Transform Message">
+            <dw:input-payload mimeType="application/java"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+//This is purely used to consume the payload and put into a java object, I'm all ears for a better/cleaner/faster/more readable way.
+payload map ($ mapObject { ($$): $ } )
+]]></dw:set-payload>
+        </dw:transform-message>
+
+        <logger message="DSOProjectHistory Poll Size: #[payload.size()]" level="INFO" category="com.merrillcorp.logging.prof" doc:name="Logger"/>
+        
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:input-payload/>
+                    <dw:set-variable variableName="lastProjectHistoryModified"><![CDATA[%dw 1.0
+%output application/java
+---
+//Sort by CreatedDate and pick the last one so we can store that as the key to use next time
+(payload orderBy $.CreatedDate)[-1]
+]]></dw:set-variable>
+                </dw:transform-message>
+                <objectstore:store config-ref="Project_Company_History_Object_Store" key="lastModifiedForProjectHistory" value-ref="#[flowVars.lastProjectHistoryModified.CreatedDate]" overwrite="true" doc:name="ObjectStore"/>
+            </when>
+            <otherwise>
+                <set-payload value="[]" mimeType="application/json" doc:name="Set Payload"/>
+            </otherwise>
+        </choice>
+
+        <dw:transform-message doc:name="Transform Message">
+            <dw:input-payload/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+//Return just a list of Id values, if it is null, then just an empty list
+payload.DatasiteOne_Project__c default []
+]]></dw:set-payload>
+        </dw:transform-message>
+
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="#[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception"/>
+            <set-payload doc:name="Set Payload" value="Unable to retrieve DSOProjectHistory"/>
+            <set-property doc:name="400" propertyName="http.status" value="#[400]"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

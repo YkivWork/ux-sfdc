@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd">
+    <flow name="pollHistoryProjectIds" processingStrategy="synchronous">
+        <poll doc:name="Poll">
+            <fixed-frequency-scheduler frequency="${poll.frequencyMillis}" startDelay="${poll.delayMillis}"/>
+
+			<scatter-gather doc:name="Scatter-Gather">
+			    <vm:outbound-endpoint exchange-pattern="request-response" path="VM_GET_PROJECT_HISTORY_IDS" connector-ref="VM_IN_MEMORY" doc:name="VM_GET_PROJECT_HISTORY_IDS"/>
+                <vm:outbound-endpoint exchange-pattern="request-response" path="VM_GET_COMPANY_PROJECT_IDS" connector-ref="VM_IN_MEMORY" doc:name="VM_GET_COMPANY_PROJECT_IDS"/>
+                <vm:outbound-endpoint exchange-pattern="request-response" path="VM_GET_OPPORTUNITY_TEAM_MEMBER_PROJECT_IDS" connector-ref="VM_IN_MEMORY" doc:name="VM_GET_OPPORTUNITY_TEAM_MEMBER_PROJECT_IDS"/>
+			</scatter-gather>
+        </poll>
+
+        <dw:transform-message doc:name="Transform to Java Object">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+(flatten payload ) distinctBy $
+]]></dw:set-payload>
+        </dw:transform-message>
+                
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+
+                <logger message="Project Id List - Before Queue: #[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging.polling" doc:name="Logger"/>
+                <choice doc:name="Choice">
+                    <when expression="#[payload == empty]">
+                        <logger message="No data retrieved" level="INFO" category="com.merrillcorp.logging.polling" doc:name="Log Payload "/>
+                    </when>
+                    <otherwise>
+                        <foreach collection="#[payload]" doc:name="For Each">
+                            <logger message="Sending to SFDC Query: #[message.payloadAs(java.lang.String)]" level="INFO" category="com.merrillcorp.logging.polling" doc:name="[DEBUG]Log Project Id"/>
+
+                            <vm:outbound-endpoint exchange-pattern="request-response" path="vmProcessSFDCProject" connector-ref="VM_IN_MEMORY" doc:name="Process SFDC Project"/>
+                        </foreach>
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <logger message="No project id's to process" level="INFO" category="com.merrillcorp.logging.polling" doc:name="Log Empty History Queries"/>
+            </otherwise>
+        </choice>
+
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="#[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging.polling" doc:name="Log Exception"/>
+            <set-payload value="Error Polling Project Id List Request" doc:name="Set Payload"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

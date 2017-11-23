@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <flow name="mapPayloadPreProjectProcessing" processingStrategy="synchronous">
+        <logger message="Flow: #[flow.name] Action=Started Payload=#[message.payloadAs(java.lang.String)]" level="INFO" category="com.merrillcorp.logging" doc:name="Log Flow Start"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+
+(flatten payload ) distinctBy ($.DatasiteOne_Project__c default [] ) map {
+	ProjectId: $.DatasiteOne_Project__c,
+	CreatedDate: now as :localdatetime {format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"},
+	CallingFlow: "POLL_HISTORY_PROJECT_IDS"
+}  
+]]></dw:set-payload>
+        </dw:transform-message>
+        <catch-exception-strategy doc:name="mappingCatch_Exception_Strategy">
+            <logger message="Flow=mapPayloadPreProjectProcessing #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception"/>
+            <set-payload doc:name="Set Payload" value="Unable to transform in mapPayloadPreProjectProcessing"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

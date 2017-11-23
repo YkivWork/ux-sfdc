@@ -1,0 +1,19 @@
+#%RAML 1.0
+title: UX-SFDC API
+baseUri: localhost:8081/api/
+description: This API is needed to be called at the end of a daily usage run to process
+             newly active projects
+
+/new-active-projects:
+  displayName: Newly-Active-Projects
+  description: Call to Start a Poll of Newly Active Projects
+  post:
+    responses:
+      200:
+        body:
+          application/json:
+            example: {"Status": "OK"}
+      500:
+        body:
+          application/json:
+            example: {"Status": "FAILURE"}

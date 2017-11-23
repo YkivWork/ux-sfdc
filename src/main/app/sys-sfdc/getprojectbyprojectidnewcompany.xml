@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json"
+	xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <flow name="getProjectByProjectIdNewCompany" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmGetProjectByProjectIdNewCompany" connector-ref="VM_IN_MEMORY" doc:name="Get Project by Project Id New Company"/>
+        <logger message="Flow: #[flow.name] Action=Start" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Flow Start"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <expression-component doc:name="Expression"><![CDATA[flowVars.projectId=payload.ProjectId;
+]]></expression-component>
+
+        <sfdc:query config-ref="Salesforce__Basic_Authentication" query="${main.sfdc.query}  WHERE Project_Status__c in ('${aria.project_status.active}', '${aria.project_status.build_period}', '${aria.project_status.closed}', '${aria.project_status.closure_requested}', '${aria.project_status.hibernation}', '${aria.project_status.suspended}') AND SalesForce_ProjectId__c = '#[flowVars.projectId]'   " doc:name="Salesforce"/>
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

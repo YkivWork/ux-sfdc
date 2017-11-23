@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:objectstore="http://www.mulesoft.org/schema/mule/objectstore"
+	xmlns:json="http://www.mulesoft.org/schema/mule/json"
+	xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/objectstore http://www.mulesoft.org/schema/mule/objectstore/current/mule-objectstore.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <flow name="getProjectsSuspendedLast2Days" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmGetProjectsSuspendedLast2Days" connector-ref="VM_IN_MEMORY" doc:name="Get Projects suspended Last 2 Days"/>
+        <logger message="Flow=#[flow.name] Action=started " level="INFO" category="com.merrillcorp.logging" doc:name="Logger"/>
+        <flow-ref name="getProjectsSuspendedLast2Days_Sub" doc:name="getProjectsSuspendedLast2Days_Sub"/>
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+    <sub-flow name="getProjectsSuspendedLast2Days_Sub">
+        <objectstore:contains config-ref="Project_Company_History_Object_Store" key="lastMaxSuspendedLast2Days" doc:name="ObjectStore"/>
+        <choice doc:name="Choice">
+            <when expression="#[payload==true]">
+                <logger message="Flow: #[flow.name] Message=Last Max Suspended Last 2 Days Exists" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Last Max Suspended Last 2 Days Exists"/>
+                <objectstore:retrieve config-ref="Project_Company_History_Object_Store" key="lastMaxSuspendedLast2Days" doc:name="ObjectStore"/>
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="${main.sfdc.query}  where    id  &gt; '#[payload]'   and Suspended_Date__c = LAST_N_DAYS:2" doc:name="Salesforce"/>
+            </when>
+            <otherwise>
+                <logger message="Flow: #[flow.name] Message=LastMaxSuspendedLast2Days does not exist" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Max Suspended Last 2 Days Doesn't Exist"/>
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="${main.sfdc.query}  where   Suspended_Date__c = LAST_N_DAYS:6" doc:name="Salesforce"/>
+            </otherwise>
+        </choice>
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+        <logger message="Flow: #[flow.name] Payload=#[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Project List Before Queue"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload ]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <logger message="Flow: #[flow.name] Payload=Get Projects Suspended Last 2 Days Size is GREATER than 0" level="DEBUG" doc:name="Log Payload Size() &gt; 0" category="com.merrillcorp.logging"/>
+                <set-variable variableName="resultPayload" value="#[payload]" doc:name="Persist Payload"/>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-variable variableName="lastMaxSuspendedLast2Days"><![CDATA[%dw 1.0
+%output application/java
+---
+(payload orderBy $.Id)[-1..0][0]]]></dw:set-variable>
+                </dw:transform-message>
+                <objectstore:store config-ref="Project_Company_History_Object_Store" key="lastMaxSuspendedLast2Days" value-ref="#[flowVars.lastMaxSuspendedLast2Days.Id]" doc:name="ObjectStore"/>
+                <set-payload value="#[flowVars.resultPayload]" doc:name="Set Payload Back to resultPayload"/>
+                <logger message="Flow: #[flow.name] Payload=#[message.payloadAs(java.lang.String)]" level="DEBUG" doc:name="Logger" category="com.merrillcorp.logging"/>
+            </when>
+            <otherwise>
+                <logger message="Flow: #[flow.name] Payload=Get Projects Suspended Last 2 Days returned no results" level="DEBUG" doc:name="Log Empty Result" category="com.merrillcorp.logging"/>
+            </otherwise>
+        </choice>
+    </sub-flow>
+</mule>

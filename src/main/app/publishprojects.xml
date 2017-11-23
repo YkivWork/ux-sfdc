@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:microsoftservicebus="http://www.mulesoft.org/schema/mule/microsoftservicebus" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/microsoftservicebus http://www.mulesoft.org/schema/mule/microsoftservicebus/current/mule-microsoftservicebus.xsd">
+    <flow name="publishNewlyActiveProject" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmPublishNewlyActiveProject" connector-ref="VM_IN_MEMORY" doc:name="Publish Newly Active Project"/>
+        <logger message="Flow: #[flow.name] Action=Started" level="INFO" category="com.merrillcorp.logging" doc:name="Log Flow Start"/>
+        <microsoftservicebus:queue-send config-ref="Microsoft_Service_Bus__Azure_Service_Bus" destinationQueue="${queue.newlyactiveproject}" doc:name="Microsoft Service Bus"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Flow: #[flow.name] Action=LogExceptionSummary Payload=#[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="publishProjectsSuspendedYesterday" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmPublishProjectsSuspendedYesterday" connector-ref="VM_IN_MEMORY" doc:name="Publish Projects Suspended Yesterday"/>
+        <logger message="Flow=#[flow.name] Action=started " level="INFO" category="com.merrillcorp.logging" doc:name="Log Flow Start"/>
+        <microsoftservicebus:queue-send config-ref="Microsoft_Service_Bus__Azure_Service_Bus"  doc:name="Microsoft Service Bus" destinationQueue="${queue.projectsuspendedyesterday}"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Flow: #[flow.name] ExceptionSummary=#[exception.getSummaryMessage()]" level="ERROR" doc:name="Logger" category="com.merrillcorp.logging"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="publishProjectsSuspendedLast2Days" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmPublishProjectsSuspendedLast2Days" connector-ref="VM_IN_MEMORY" doc:name="Publish Projects Suspended Last 2 Days"/>
+        <logger message="Flow=#[flow.name] Action=started " level="INFO" category="com.merrillcorp.logging" doc:name="Log Flow Start"/>
+        <microsoftservicebus:queue-send config-ref="Microsoft_Service_Bus__Azure_Service_Bus"  doc:name="Microsoft Service Bus" destinationQueue="${queue.projectsuspendedlast2days}"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Flow: #[flow.name] ExceptionSummary=#[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+
+</mule>

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mule/schedulers/current/mule-schedulers.xsd">
+    <flow name="pollProjectsSuspendedLast2Days" processingStrategy="synchronous">
+        <poll doc:name="Poll">
+            <schedulers:cron-scheduler expression="${poll.suspended.last.2.days.cron}" timeZone="${poll.suspended.last.2.days.cron.timezone}"/>
+            <vm:outbound-endpoint exchange-pattern="request-response" path="vmGetProjectsSuspendedLast2Days" connector-ref="VM_IN_MEMORY" doc:name="Get Proejcts Suspended Last 2 Days"/>
+        </poll>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <foreach collection="#[payload]" doc:name="For Each">
+                    <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+                    <vm:outbound-endpoint exchange-pattern="request-response" path="VM_MAP_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="Map SFDC Project"/>
+                    <flow-ref name="publishProjectsSuspendedLast2Days" doc:name="publishProjectsSuspendedLast2Days"/>
+                </foreach>
+            </when>
+            <otherwise>
+                <logger message="No Projects suspended in the last 2 days." level="INFO" doc:name="Log Payload is empty"/>
+            </otherwise>
+        </choice>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Logger"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="pollProjectsSuspendedYesterday"  processingStrategy="synchronous">
+        <poll doc:name="Poll">
+            <schedulers:cron-scheduler expression="${poll.suspended.last.yesterday.cron}" timeZone="${poll.suspended.last.yesterday.cron.timezone}"/>
+            <vm:outbound-endpoint exchange-pattern="request-response" path="vmGetProjectsSuspendedYesterday" connector-ref="VM_IN_MEMORY" doc:name="Get Proejcts Suspended Yesterday"/>
+        </poll>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="">
+                <foreach collection="#[payload]" doc:name="For Each">
+                    <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+                    <vm:outbound-endpoint exchange-pattern="request-response" path="VM_MAP_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="Map SFDC Project"/>
+                    <flow-ref name="publishProjectsSuspendedYesterday" doc:name="publishProjectsSuspendedYesterday"/>
+                </foreach>
+            </when>
+            <otherwise>
+                <logger message="message=#[message]" level="INFO" category="com.merrillcorp.logging" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="pollGetNewCompanies" processingStrategy="synchronous">
+        <poll doc:name="Poll">
+            <fixed-frequency-scheduler frequency="1" timeUnit="MINUTES"/>
+            <vm:outbound-endpoint exchange-pattern="request-response" path="vmGetNewCompanies" connector-ref="VM_IN_MEMORY" doc:name="Get new companies"/>
+        </poll>
+        <logger message="Flow=#[flow.name] Action=Initiation" level="INFO" category="com.merrillcorp.logging" doc:name="Log Get New Companies Start"/>
+
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+
+(flatten payload ) distinctBy ($.DatasiteOne_Project__c default [] ) map {
+	ProjectId: $.DatasiteOne_Project__c,
+	CallingFlow: "pollGetNewCompanies"
+}  
+]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload == empty]">
+                <logger message="Get new companies returned no records." level="INFO" category="com.merrillcorp.logging" doc:name="Log Empty Records"/>
+            </when>
+            <otherwise>
+                <foreach collection="#[payload]" doc:name="For Each">
+                    <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+                    <vm:outbound-endpoint exchange-pattern="request-response" path="vmProcessNewCompanies" connector-ref="VM_IN_MEMORY" doc:name="Process New Companies"/>
+                </foreach>
+            </otherwise>
+        </choice>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>    
+</mule>

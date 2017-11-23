@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc"
+	xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers"
+	xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mule/schedulers/current/mule-schedulers.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+    <flow name="pollContinuationProjects" processingStrategy="synchronous" >
+        <poll doc:name="Poll">
+            <schedulers:cron-scheduler expression="${poll.continuation.cron}" timeZone="${poll.continuation.cron.timezone}"/>
+
+            <processor-chain doc:name="Processor Chain">
+                <logger message="Polling SFDC System API for Continuation" level="INFO" category="com.merrillcorp.q2c" doc:name="INFO"/>
+
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="${main.sfdc.query}
+WHERE Project_Status__c = '${aria.project_status.active}' AND Continuation_of_Services_Date__c = #[server.dateTime.format('yyyy-MM-dd')]" doc:name="Salesforce"/>
+            </processor-chain>
+        </poll>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <foreach collection="#[payload]" doc:name="For Each">
+                    <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+                    <vm:outbound-endpoint exchange-pattern="request-response" path="VM_MAP_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="vmMapMerrillProject"/>
+                    <vm:outbound-endpoint exchange-pattern="request-response" path="VM_PUBLISH_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="Publish Continuity Project"/>
+                </foreach>
+            </when>
+            <otherwise>
+                <logger message="Continuation Project Query Result is empty" level="DEBUG" category="com.merrillcorp.logging" doc:name="[DEBUG]Log Empty Continuation Result"/>
+            </otherwise>
+        </choice>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="#[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

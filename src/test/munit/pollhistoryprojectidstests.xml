@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json"
+      xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:mock="http://www.mulesoft.org/schema/mule/mock"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:spring="http://www.springframework.org/schema/beans"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/mock http://www.mulesoft.org/schema/mule/mock/current/mule-mock.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <munit:config name="munit" doc:name="MUnit configuration"/>
+    <spring:beans>
+        <spring:import resource="classpath:pollhistoryprojectids.xml"/>
+        <spring:import resource="classpath:globals.xml"/>
+    </spring:beans>
+    <munit:test name="pollHistoryProjectIdsTest" description="Test">
+        <mock:when messageProcessor="vm:outbound-endpoint" doc:name="Mock VM">
+            <mock:then-return payload="#[samePayload()]" mimeType="application/java"/>
+        </mock:when>
+
+        <munit:set payload="[ [&quot;a27c0000005ysK6AAI&quot;], [&quot;a27c0000005ysK1AAI&quot;] ]" mimeType="application/json" doc:name="Set Message"/>
+
+        <flow-ref name="pollHistoryProjectIds" doc:name="pollHistoryProjectIds"/>
+
+        <json:json-to-object-transformer returnClass="java.util.List" mimeType="application/java" doc:name="JSON to Object"/>
+
+        <munit:assert-on-equals message="payload size is invalid" expectedValue="#[2]" actualValue="#[payload.size()]" doc:name="Assert payload size"/>
+
+    </munit:test>
+
+    <munit:test name="pollHistoryProjectIdsHandlesEmptyResults" description="Test">
+        <mock:when messageProcessor="vm:outbound-endpoint" doc:name="Mock VM">
+            <mock:then-return payload="#[samePayload()]" mimeType="application/java"/>
+        </mock:when>
+
+        <munit:set payload="[ [], [] ]" mimeType="application/json" doc:name="Set Message"/>
+
+        <flow-ref name="pollHistoryProjectIds" doc:name="pollHistoryProjectIds"/>
+
+        <json:json-to-object-transformer returnClass="java.util.List" mimeType="application/java" doc:name="JSON to Object"/>
+
+        <munit:assert-on-equals message="payload size is invalid" expectedValue="#[0]" actualValue="#[payload.size()]" doc:name="Assert payload size"/>
+
+    </munit:test>
+</mule>

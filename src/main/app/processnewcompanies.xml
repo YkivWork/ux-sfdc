@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <flow name="processnewcompaniesFlow">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmProcessNewCompanies" connector-ref="VM_IN_MEMORY" doc:name="Process New Companies"/>
+        <logger message="Flow: #[flow.name] Action=Start" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Process New Companies Start"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <vm:outbound-endpoint exchange-pattern="request-response" path="vmGetProjectByProjectIdNewCompany" connector-ref="VM_IN_MEMORY" doc:name="Get Project by Project Id New Company"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload == empty]">
+                <logger message="Flow: #[flow.name] Action=LogMessage Message=Get Project returned no results" level="WARN" category="com.merrillcorp.logging" doc:name="Log Empty Get Project"/>
+            </when>
+            <otherwise>
+                <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+                <logger message="Flow: #[flow.name] Action=LogPayload Payload=#[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Payload"/>
+                <vm:outbound-endpoint exchange-pattern="request-response" path="VM_MAP_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="Map SFDC Project"/>
+                <logger message="Flow: #[flow.name] Action=LogPayload Payload=#[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Payload After Mapping"/>
+                <vm:outbound-endpoint exchange-pattern="request-response" path="VM_PUBLISH_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="Publish SFDC Project"/>
+            </otherwise>
+        </choice>
+
+        <catch-exception-strategy doc:name="Catch Exception Strategy" logException="false">
+            <logger message="Flow: #[flow.name] Action=LogExceptionSummary Exception Summary= #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception Summary"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

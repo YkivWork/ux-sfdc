@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd">
+    <flow name="processSFDCProject" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmProcessSFDCProject" connector-ref="VM_IN_MEMORY" doc:name="Process SFDC Project"/>
+        <logger message="***Process SFDC Project Initial Payload: #[message.payloadAs(java.lang.String)]" level="INFO" category="com.merrillcorp.logging" doc:name="Log Initial Payload"/>
+        <dw:transform-message doc:name="Transform to Java Object">
+            <dw:set-variable variableName="projectId"><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-variable>
+        </dw:transform-message>
+
+        <vm:outbound-endpoint exchange-pattern="request-response" path="vmGetProjectByProjectId" connector-ref="VM_IN_MEMORY" doc:name="Get Project by Project Id"/>
+        <dw:transform-message doc:name="Transform to Java Object">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[payload == empty]">
+                <logger message="Empty Result for Project Id:  #[flowVars.projectId.ProjectId]" level="WARN" doc:name="Log Empty Payload" category="com.merrillcorp.logging"/>
+            </when>
+            <otherwise>
+                <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+                <logger message="***Project Before Mapping: #[message.payloadAs(java.lang.String)]" level="INFO" category="com.merrillcorp.logging" doc:name="[DEBUG]Log Project Before Mapping"/>
+                <vm:outbound-endpoint exchange-pattern="request-response" path="VM_MAP_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="vmMapSFDCProject"/>
+                <logger message="***Project After Mapping: #[message.payloadAs(java.lang.String)]" level="INFO" category="com.merrillcorp.logging" doc:name="[DEBUG]Project After Mapping"/>
+                <vm:outbound-endpoint exchange-pattern="request-response" path="VM_PUBLISH_SFDC_PROJECT" connector-ref="VM_IN_MEMORY" doc:name="VM_PUBLISH_SFDC_PROJECT"/>
+            </otherwise>
+        </choice>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+            <logger message="Exception Summary: #[exception.getSummaryMessage()]" level="ERROR" category="com.merrillcorp.logging" doc:name="Log Exception"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:objectstore="http://www.mulesoft.org/schema/mule/objectstore" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/objectstore http://www.mulesoft.org/schema/mule/objectstore/current/mule-objectstore.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <expression-filter expression="#[payload.size() &gt; 0]" name="No_New_Companies" doc:name="Expression"/>
+    <flow name="getNewCompanies" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="request-response" path="vmGetNewCompanies" connector-ref="VM_IN_MEMORY" doc:name="Get Newly Added Companies"/>
+        <logger message="Flow=#[flow.name] Action=Started" level="INFO" doc:name="Log Initial Payload" category="com.merrillcorp.logging"/>
+        
+        <objectstore:contains config-ref="Project_Company_History_Object_Store" key="lastNewCompanyModifiedDate" doc:name="ObjectStore"/>
+
+        <choice doc:name="Choice">
+            <when expression="#[payload == true]">
+                <objectstore:retrieve config-ref="Project_Company_History_Object_Store"  defaultValue-ref="#[string:YESTERDAY]" key="lastNewCompanyModifiedDate" doc:name="ObjectStore"/>
+                <logger message="Flow=#[flow.name] Action=LogPayload Payload=#[message.payloadAs(java.lang.String)]" level="INFO" doc:name="Log Last Max new Company Id" category="com.merrillcorp.logging"/>
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="select      max(LastModifiedDate)  LastModifiedDate, DatasiteOne_Project__c   from DatasiteOne_Company__c   where   LastModifiedDate &gt; #[payload]   group by   DatasiteOne_Project__c   " doc:name="Salesforce"/>
+
+
+           
+            </when>
+            <otherwise>
+                <logger message="***Using Yesterday instead of lastMAXNewCompany" level="WARN" category="com.merrillcorp.logging" doc:name="[WARN]Using Yesterday instead of lastMAXNewCompany"/>
+                <sfdc:query config-ref="Salesforce__Basic_Authentication" query="select      max(LastModifiedDate)  LastModifiedDate, DatasiteOne_Project__c   from DatasiteOne_Company__c   where   LastModifiedDate &gt; YESTERDAY   group by   DatasiteOne_Project__c " doc:name="Salesforce"/>
+            </otherwise>
+        </choice>
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload map ($ mapObject { ($$): $ } ) ]]></dw:set-payload>
+                </dw:transform-message>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-variable variableName="lastNewCompanyModifiedDate"><![CDATA[%dw 1.0
+%output application/java
+---
+//Sort by LastModifiedDate and pick the last one so we can store that as the key to use next time
+(payload orderBy $.LastModifiedDate)[-1].LastModifiedDate as :string]]></dw:set-variable>
+                </dw:transform-message>
+                <logger message="getNewCompanies Poll Size: #[payload.size()]" level="INFO" category="com.merrillcorp.logging.prof" doc:name="Logger"/>
+            </when>
+            <otherwise>
+                <logger message="No New Companies to Process" level="INFO" category="com.merrillcorp.logging.polling" doc:name="No New Companies to Process"/>
+                <filter ref="No_New_Companies" doc:name="Filter Reference"/>
+            </otherwise>
+        </choice>
+<!--         <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/> -->
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="Flow=#[flow.name] Action=LogPayload Payload=#[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log Query Result"/>
+        <choice doc:name="Choice">
+            <when expression="#[payload.size() &gt; 0]">
+                <logger message="Flow=#[flow.name] Action=LogMessage Message=Get New Companies Result Size &gt; 0: #[message.payloadAs(java.lang.String)]" level="DEBUG" category="com.merrillcorp.logging" doc:name="Log SFDC Result Size &gt; 0"/>
+                <expression-component doc:name="Persist SFDC Response"><![CDATA[flowVars.sfdcResponse=payload;]]></expression-component>
+
+                <objectstore:store config-ref="Project_Company_History_Object_Store" key="lastNewCompanyModifiedDate" value-ref="#[flowVars.lastNewCompanyModifiedDate]" overwrite="true" doc:name="ObjectStore"/>
+                <set-payload value="#[flowVars.sfdcResponse]" doc:name="Set Payload to SFDC Response"/>
+            </when>
+            <otherwise>
+                <logger message="Flow=#[flow.name] Action=LogMessage Message=Get new companies query returned no results." level="WARN" category="com.merrillcorp.logging" doc:name="Log Empty Result"/>
+                <set-payload value="[]" mimeType="application/json" doc:name="Set Payload"/>
+            </otherwise>
+        </choice>
+        <json:object-to-json-transformer mimeType="application/json" doc:name="Object to JSON"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy" >
+            <logger message="Flow=#[flow.name] Action=LogExceptionSummary ExceptionSummary=#[exception.getSummaryMessage()]" level="ERROR" doc:name="Log Exception" category="com.merrillcorp.logging"/>
+        </catch-exception-strategy>
+    </flow>
+</mule>
